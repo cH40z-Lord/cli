@@ -3,10 +3,8 @@
 
 namespace Microsoft.DotNet.ProjectModel.ProjectSystem
 {
-    public class DependencyItem
+    internal interface ICacheDependency
     {
-        public string Name { get; set; }
-
-        public string Version { get; set; }
+        bool HasChanged { get; }
     }
 }

@@ -1,12 +1,13 @@
-﻿using System.IO;
+﻿// Copyright (c) .NET Foundation and contributors. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.Extensions.ProjectModel;
-using Microsoft.Extensions.ProjectModel.ProjectSystem;
 using NuGet.Frameworks;
 using Xunit;
 
-namespace Microsoft.DotNet.ProjectModel.Workspaces.Tests
+namespace Microsoft.DotNet.ProjectModel.ProjectSystem.Tests
 {
     public class ProjectSystemTests
     {
@@ -22,7 +23,7 @@ namespace Microsoft.DotNet.ProjectModel.Workspaces.Tests
         }
 
         [Fact]
-        public async Task CreateFromPath()
+        public void CreateFromPath()
         {
             var current = Directory.GetCurrentDirectory();
 
@@ -35,7 +36,7 @@ namespace Microsoft.DotNet.ProjectModel.Workspaces.Tests
 
             var testProjectPath = projects.Where(p => p.Contains("ClassLibrary1")).Single();
 
-            var info = await projectSystem.GetProjectInformationAsync(testProjectPath);
+            var info = projectSystem.GetProjectInformation(testProjectPath);
             Assert.NotNull(info);
             Assert.Equal("ClassLibrary1", info.Name);
             Assert.Equal(2, info.Frameworks.Count());
@@ -43,19 +44,19 @@ namespace Microsoft.DotNet.ProjectModel.Workspaces.Tests
 
             var framework = NuGetFramework.Parse("dnxcore50");
             var configuration = info.Configurations.First();
-            var dependencies = await projectSystem.GetDependenciesAsync(testProjectPath, framework, configuration);
+            var dependencies = projectSystem.GetDependencies(testProjectPath, framework, configuration);
             Assert.NotEmpty(dependencies);
 
-            var diagnostics = await projectSystem.GetDependencyDiagnosticsAsync(testProjectPath, framework, configuration);
+            var diagnostics = projectSystem.GetDependencyDiagnostics(testProjectPath, framework, configuration);
             Assert.NotNull(diagnostics);
 
-            var fileReferences = await projectSystem.GetFileReferencesAsync(testProjectPath, framework, configuration);
+            var fileReferences = projectSystem.GetFileReferences(testProjectPath, framework, configuration);
             Assert.NotEmpty(fileReferences);
 
-            var sources = await projectSystem.GetSourcesAsync(testProjectPath, framework, configuration);
+            var sources = projectSystem.GetSources(testProjectPath, framework, configuration);
             Assert.NotEmpty(sources);
 
-            var projectReferences = await projectSystem.GetProjectReferencesAsync(testProjectPath, framework, configuration);
+            var projectReferences = projectSystem.GetProjectReferences(testProjectPath, framework, configuration);
             Assert.NotEmpty(projectReferences);
         }
     }

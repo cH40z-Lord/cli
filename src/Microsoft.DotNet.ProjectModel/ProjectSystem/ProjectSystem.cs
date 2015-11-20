@@ -1,11 +1,14 @@
-﻿using System;
+﻿// Copyright (c) .NET Foundation and contributors. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.Extensions.ProjectModel;
 using NuGet.Frameworks;
 
-namespace Microsoft.Extensions.ProjectModel.ProjectSystem
+namespace Microsoft.DotNet.ProjectModel.ProjectSystem
 {
     public class ProjectSystem
     {
@@ -86,9 +89,9 @@ namespace Microsoft.Extensions.ProjectModel.ProjectSystem
             return null;
         }
 
-        public async Task<ProjectInformation> GetProjectInformationAsync(string projectPath)
+        public ProjectInformation GetProjectInformation(string projectPath)
         {
-            var project = await _cache.GetProjectAsync(projectPath);
+            var project = _cache.GetProject(projectPath);
             if (project == null)
             {
                 return null;
@@ -99,12 +102,12 @@ namespace Microsoft.Extensions.ProjectModel.ProjectSystem
             }
         }
 
-        public async Task<IEnumerable<ProjectReferenceInfo>> GetProjectReferencesAsync(
+        public IEnumerable<ProjectReferenceInfo> GetProjectReferences(
             string projectPath,
             NuGetFramework framework,
             string configuration)
         {
-            var dependencyInfo = await _cache.GetDependencyInfo(projectPath, framework, configuration);
+            var dependencyInfo = _cache.GetDependencyInfo(projectPath, framework, configuration);
             if (dependencyInfo == null)
             {
                 return Enumerable.Empty<ProjectReferenceInfo>();
@@ -113,12 +116,12 @@ namespace Microsoft.Extensions.ProjectModel.ProjectSystem
             return dependencyInfo.ProjectReferences;
         }
 
-        public async Task<IEnumerable<DependencyDescription>> GetDependenciesAsync(
+        public IEnumerable<DependencyDescription> GetDependencies(
             string projectPath,
             NuGetFramework framework,
             string configuration)
         {
-            var dependencyInfo = await _cache.GetDependencyInfo(projectPath, framework, configuration);
+            var dependencyInfo = _cache.GetDependencyInfo(projectPath, framework, configuration);
             if (dependencyInfo == null)
             {
                 return Enumerable.Empty<DependencyDescription>();
@@ -127,12 +130,12 @@ namespace Microsoft.Extensions.ProjectModel.ProjectSystem
             return dependencyInfo.Dependencies;
         }
 
-        public async Task<IEnumerable<DiagnosticMessage>> GetDependencyDiagnosticsAsync(
+        public IEnumerable<DiagnosticMessage> GetDependencyDiagnostics(
             string projectPath,
             NuGetFramework framework,
             string configuration)
         {
-            var dependencyInfo = await _cache.GetDependencyInfo(projectPath, framework, configuration);
+            var dependencyInfo = _cache.GetDependencyInfo(projectPath, framework, configuration);
             if (dependencyInfo == null)
             {
                 return null;
@@ -141,12 +144,12 @@ namespace Microsoft.Extensions.ProjectModel.ProjectSystem
             return dependencyInfo.Diagnostics;
         }
 
-        public async Task<IEnumerable<string>> GetFileReferencesAsync(
+        public IEnumerable<string> GetFileReferences(
             string projectPath,
             NuGetFramework framework,
             string configuration)
         {
-            var dependencyInfo = await _cache.GetDependencyInfo(projectPath, framework, configuration);
+            var dependencyInfo = _cache.GetDependencyInfo(projectPath, framework, configuration);
             if (dependencyInfo == null)
             {
                 return null;
@@ -155,30 +158,30 @@ namespace Microsoft.Extensions.ProjectModel.ProjectSystem
             return dependencyInfo.FileReferences;
         }
 
-        public async Task<IEnumerable<string>> GetSourcesAsync(
+        public IEnumerable<string> GetSources(
             string projectPath,
             NuGetFramework framework,
             string configuration)
         {
-            var dependencyInfo = await _cache.GetDependencyInfo(projectPath, framework, configuration);
+            var dependencyInfo = _cache.GetDependencyInfo(projectPath, framework, configuration);
             if (dependencyInfo == null)
             {
                 return null;
             }
 
-            var project = await _cache.GetProjectAsync(projectPath);
+            var project = _cache.GetProject(projectPath);
             var sources = new List<string>(project.Files.SourceFiles);
             sources.AddRange(dependencyInfo.ExportedSourcesFiles);
 
             return sources;
         }
 
-        public async Task<CommonCompilerOptions> GetCompilerOptionAsync(
+        public CommonCompilerOptions GetCompilerOption(
             string projectPath,
             NuGetFramework framework,
             string configuration)
         {
-            var project = await _cache.GetProjectAsync(projectPath);
+            var project = _cache.GetProject(projectPath);
             if (project == null)
             {
                 return null;

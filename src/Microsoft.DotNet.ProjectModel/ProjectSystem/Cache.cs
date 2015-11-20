@@ -1,19 +1,24 @@
-﻿using System;
+﻿// Copyright (c) .NET Foundation and contributors. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 
-namespace Microsoft.DotNet.ProjectModel.Caching
+namespace Microsoft.DotNet.ProjectModel.ProjectSystem
 {
-    internal class Cache : ICache
+    internal class Cache
     {
-        private readonly ConcurrentDictionary<object, Lazy<CacheEntry>> _entries = new ConcurrentDictionary<object, Lazy<CacheEntry>>();
-        private readonly ICacheContextAccessor _accessor;
+        [ThreadStatic]
+        private static CacheContext _threadCacheContextInstance;
 
-        public Cache(ICacheContextAccessor accessor)
-        {
-            _accessor = accessor;
-        }
+        private readonly ConcurrentDictionary<string, NamedCacheDependency> _namedDependencies
+                   = new ConcurrentDictionary<string, NamedCacheDependency>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly ConcurrentDictionary<object, Lazy<CacheEntry>> _entries
+                   = new ConcurrentDictionary<object, Lazy<CacheEntry>>();
 
         public object Get(object key, Func<CacheContext, object> factory)
         {
@@ -24,14 +29,28 @@ namespace Microsoft.DotNet.ProjectModel.Caching
             return entry.Value.Result;
         }
 
-        public object Get(object key, Func<CacheContext, object, object> factory)
+        public void TriggerDependency(params string[] clues)
         {
-            var entry = _entries.AddOrUpdate(key,
-                k => AddEntry(k, (ctx) => factory(ctx, null)),
-                (k, oldValue) => UpdateEntry(oldValue, k, (ctx) => factory(ctx, oldValue.Value.Result)));
-
-            return entry.Value.Result;
+            NamedCacheDependency dependency;
+            if (_namedDependencies.TryRemove(CreateDependencyName(clues), out dependency))
+            {
+                dependency.SetChanged();
+            }
         }
+
+        public void MonitorFile(CacheContext ctx, string filepath)
+        {
+            ctx.Monitor(new FileWriteTimeCacheDependency(filepath));
+        }
+
+        public void MonitorDependency(CacheContext ctx, params string[] clues)
+        {
+            var name = CreateDependencyName(clues);
+            var dependency = _namedDependencies.GetOrAdd(name, key => new NamedCacheDependency(key));
+            ctx.Monitor(dependency);
+        }
+
+        private string CreateDependencyName(params string[] clues) => $"DependencyName_of_{string.Join("_", clues)}";
 
         private Lazy<CacheEntry> AddEntry(object k, Func<CacheContext, object> acquire)
         {
@@ -75,11 +94,11 @@ namespace Microsoft.DotNet.ProjectModel.Caching
         private void PropagateCacheDependencies(CacheEntry entry)
         {
             // Bubble up volatile tokens to parent context
-            if (_accessor.Current != null)
+            if (_threadCacheContextInstance != null)
             {
                 foreach (var dependency in entry.Dependencies)
                 {
-                    _accessor.Current.Monitor(dependency);
+                    _threadCacheContextInstance.Monitor(dependency);
                 }
             }
         }
@@ -92,18 +111,16 @@ namespace Microsoft.DotNet.ProjectModel.Caching
             try
             {
                 // Push context
-                parentContext = _accessor.Current;
-                _accessor.Current = context;
+                parentContext = _threadCacheContextInstance;
+                _threadCacheContextInstance = context;
 
                 entry.Result = acquire(context);
             }
             finally
             {
                 // Pop context
-                _accessor.Current = parentContext;
+                _threadCacheContextInstance = parentContext;
             }
-
-            // Logger.TraceInformation("[{0}]: Cache miss for {1}", GetType().Name, k);
 
             entry.CompactCacheDependencies();
             return entry;
@@ -113,11 +130,9 @@ namespace Microsoft.DotNet.ProjectModel.Caching
         {
             private IList<ICacheDependency> _dependencies;
 
-            public CacheEntry()
-            {
-            }
+            public CacheEntry() { }
 
-            public IEnumerable<ICacheDependency> Dependencies { get { return _dependencies ?? Enumerable.Empty<ICacheDependency>(); } }
+            public IEnumerable<ICacheDependency> Dependencies => _dependencies ?? Enumerable.Empty<ICacheDependency>();
 
             public object Result { get; set; }
 
@@ -142,6 +157,51 @@ namespace Microsoft.DotNet.ProjectModel.Caching
             public void Dispose()
             {
                 (Result as IDisposable)?.Dispose();
+            }
+        }
+
+        private class NamedCacheDependency : ICacheDependency
+        {
+            private readonly string _name;
+            private bool _hasChanged;
+
+            public NamedCacheDependency(string name)
+            {
+                _name = name;
+            }
+
+            public void SetChanged()
+            {
+                _hasChanged = true;
+            }
+
+            public bool HasChanged => _hasChanged;
+        }
+
+        private class FileWriteTimeCacheDependency : ICacheDependency
+        {
+            private readonly string _path;
+            private readonly DateTime _lastWriteTime;
+
+            public FileWriteTimeCacheDependency(string path)
+            {
+                _path = path;
+                _lastWriteTime = File.GetLastWriteTime(path);
+            }
+
+            public bool HasChanged => _lastWriteTime < File.GetLastWriteTime(_path);
+
+            public override string ToString() => _path;
+
+            public override bool Equals(object obj)
+            {
+                var token = obj as FileWriteTimeCacheDependency;
+                return token != null && token._path.Equals(_path, StringComparison.OrdinalIgnoreCase);
+            }
+
+            public override int GetHashCode()
+            {
+                return _path.GetHashCode();
             }
         }
     }
