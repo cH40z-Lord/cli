@@ -16,77 +16,45 @@ namespace Microsoft.DotNet.ProjectModel.ProjectSystem
 
         private readonly ProjectSystemCache _cache = new ProjectSystemCache();
 
-        private ProjectSystem(GlobalSettings globalSettings)
+        public ProjectSystem(string projectPath)
         {
-            // Collect all projects
-            foreach (var searchPath in globalSettings.ProjectSearchPaths)
+            var root = ProjectRootResolver.ResolveRootDirectory(projectPath);
+            GlobalSettings globalSettings;
+            if (GlobalSettings.TryGetGlobalSettings(projectPath, out globalSettings))
             {
-                var actualPath = Path.Combine(globalSettings.DirectoryPath, searchPath);
-                if (!Directory.Exists(actualPath))
+                foreach (var searchPath in globalSettings.ProjectSearchPaths)
                 {
-                    continue;
-                }
-                else
-                {
-                    actualPath = Path.GetFullPath(actualPath);
-                }
-
-                foreach (var dir in Directory.GetDirectories(actualPath))
-                {
-                    var projectJson = Path.Combine(dir, Project.FileName);
-                    if (File.Exists(projectJson))
+                    var actualPath = Path.Combine(globalSettings.DirectoryPath, searchPath);
+                    if (!Directory.Exists(actualPath))
                     {
-                        _projectPaths.Add(projectJson);
+                        continue;
+                    }
+                    else
+                    {
+                        actualPath = Path.GetFullPath(actualPath);
+                    }
+
+                    foreach (var dir in Directory.GetDirectories(actualPath))
+                    {
+                        var projectJson = Path.Combine(dir, Project.FileName);
+                        if (File.Exists(projectJson))
+                        {
+                            _projectPaths.Add(projectJson);
+                        }
                     }
                 }
+            }
+
+            if (File.Exists(projectPath) &&
+                string.Equals(Path.GetFileName(projectPath), Project.FileName, StringComparison.OrdinalIgnoreCase))
+            {
+                _projectPaths.Add(projectPath);
             }
         }
 
         public ISet<string> GetProjectPaths()
         {
             return _projectPaths;
-        }
-
-        /// <summary>
-        /// Create a workspace from a given path.
-        /// 
-        /// The give path could be a global.json file path or a directory contains a 
-        /// global.json file. 
-        /// </summary>
-        /// <param name="path">The path to the workspace.</param>
-        /// <returns>Returns workspace instance. If the global.json is missing returns null.</returns>
-        public static ProjectSystem Create(string path)
-        {
-            if (Directory.Exists(path))
-            {
-                return CreateFromGlobalJson(Path.Combine(path, GlobalSettings.FileName));
-            }
-            else
-            {
-                return CreateFromGlobalJson(path);
-            }
-        }
-
-        /// <summary>
-        /// Create a workspace from a global.json.
-        /// 
-        /// The given path must be a global.json, otherwise null is returned.
-        /// </summary>
-        /// <param name="filepath">The path to the global.json.</param>
-        /// <returns>Returns workspace instance. If a global.json is missing returns null.</returns>
-        public static ProjectSystem CreateFromGlobalJson(string filepath)
-        {
-            if (File.Exists(filepath) &&
-                string.Equals(Path.GetFileName(filepath), GlobalSettings.FileName, StringComparison.OrdinalIgnoreCase))
-            {
-                GlobalSettings globalSettings;
-                if (GlobalSettings.TryGetGlobalSettings(filepath, out globalSettings))
-                {
-                    return new ProjectSystem(globalSettings);
-                }
-            }
-
-            return null;
         }
 
         public ProjectInformation GetProjectInformation(string projectPath)

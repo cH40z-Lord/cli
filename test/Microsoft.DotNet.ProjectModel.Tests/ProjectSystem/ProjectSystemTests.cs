@@ -27,7 +27,7 @@ namespace Microsoft.DotNet.ProjectModel.ProjectSystem.Tests
         {
             var current = Directory.GetCurrentDirectory();
 
-            var projectSystem = ProjectSystem.Create(_testProjectPath);
+            var projectSystem = new ProjectSystem(_testProjectPath);
             Assert.NotNull(projectSystem);
 
             var projects = projectSystem.GetProjectPaths();
