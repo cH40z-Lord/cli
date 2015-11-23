@@ -7,7 +7,7 @@ using Microsoft.Extensions.ProjectModel;
 using NuGet.Frameworks;
 using Xunit;
 
-namespace Microsoft.DotNet.ProjectModel.ProjectSystem.Tests
+namespace Microsoft.DotNet.ProjectModel.Workspace.Tests
 {
     public class ProjectSystemTests
     {
@@ -25,39 +25,33 @@ namespace Microsoft.DotNet.ProjectModel.ProjectSystem.Tests
         [Fact]
         public void CreateFromPath()
         {
-            var current = Directory.GetCurrentDirectory();
+            // Create a workspace context and resolve all projects.
+            // Results must include the both projects found at the path and their dependencies
+            var workspaceContext = WorkspaceContext.CreateFrom(_testProjectPath);
+            Assert.NotEmpty(workspaceContext.Projects);
 
-            var projectSystem = new ProjectSystem(_testProjectPath);
-            Assert.NotNull(projectSystem);
+            var testProjectPath = workspaceContext.Projects
+                                                  .Single(p => p.Contains("ClassLibrary1"));
 
-            var projects = projectSystem.GetProjectPaths();
-            Assert.NotNull(projects);
-            Assert.NotEmpty(projects);
+            var testProject = workspaceContext.GetProject(testProjectPath);
 
-            var testProjectPath = projects.Where(p => p.Contains("ClassLibrary1")).Single();
+            Assert.Equal("ClassLibrary1", testProject.Name);
+            Assert.Equal(2, testProject.GetTargetFrameworks().Count());
+            Assert.Equal(2, testProject.GetConfigurations().Count());
 
-            var info = projectSystem.GetProjectInformation(testProjectPath);
-            Assert.NotNull(info);
-            Assert.Equal("ClassLibrary1", info.Name);
-            Assert.Equal(2, info.Frameworks.Count());
-            Assert.Equal(2, info.Configurations.Count());
 
             var framework = NuGetFramework.Parse("dnxcore50");
-            var configuration = info.Configurations.First();
-            var dependencies = projectSystem.GetDependencies(testProjectPath, framework, configuration);
-            Assert.NotEmpty(dependencies);
+            var configuration = testProject.GetConfigurations().First();
 
-            var diagnostics = projectSystem.GetDependencyDiagnostics(testProjectPath, framework, configuration);
-            Assert.NotNull(diagnostics);
+            Assert.NotNull(testProject.GetCompilerOptions(framework, configuration));
 
-            var fileReferences = projectSystem.GetFileReferences(testProjectPath, framework, configuration);
-            Assert.NotEmpty(fileReferences);
-
-            var sources = projectSystem.GetSources(testProjectPath, framework, configuration);
-            Assert.NotEmpty(sources);
-
-            var projectReferences = projectSystem.GetProjectReferences(testProjectPath, framework, configuration);
-            Assert.NotEmpty(projectReferences);
+            var dependnecyInfo = workspaceContext.GetDependencyInfo(testProject, framework);
+            Assert.NotNull(dependnecyInfo);
+            Assert.NotEmpty(dependnecyInfo.Dependencies);
+            Assert.NotNull(dependnecyInfo.Diagnostics);
+            Assert.NotEmpty(dependnecyInfo.FileReferences);
+            Assert.NotEmpty(dependnecyInfo.Sources);
+            Assert.NotEmpty(dependnecyInfo.ProjectReferences);
         }
     }
 }

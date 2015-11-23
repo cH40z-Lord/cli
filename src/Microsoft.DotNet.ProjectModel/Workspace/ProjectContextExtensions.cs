@@ -1,81 +1,15 @@
-﻿// Copyright (c) .NET Foundation and contributors. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Microsoft.Extensions.ProjectModel;
 using Microsoft.Extensions.ProjectModel.Compilation;
 using Microsoft.Extensions.ProjectModel.Graph;
-using NuGet.Frameworks;
 
-namespace Microsoft.DotNet.ProjectModel.ProjectSystem
+namespace Microsoft.DotNet.ProjectModel.Workspace
 {
-    internal class ProjectSystemCache
+    public static class ProjectContextExtensions
     {
-        private Cache Cache { get; } = new Cache();
-
-        public Project GetProject(string projectPath)
-        {
-            return (Project)Cache.Get(Tuple.Create(typeof(Project), projectPath), ctx =>
-            {
-                Cache.TriggerDependency(projectPath);
-                Cache.MonitorFile(ctx, projectPath);
-
-                Project project;
-                if (!ProjectReader.TryGetProject(projectPath, out project))
-                {
-                    return null;
-                }
-                else
-                {
-                    return project;
-                }
-            });
-        }
-
-        public ProjectContext GetProjectContext(string projectPath, NuGetFramework framework)
-        {
-            var project = GetProject(projectPath);
-            if (project == null)
-            {
-                return null;
-            }
-
-            return (ProjectContext)Cache.Get(Tuple.Create(typeof(ProjectContext), projectPath, framework), ctx =>
-            {
-                Cache.TriggerDependency(projectPath, framework.Framework);
-                Cache.MonitorDependency(ctx, projectPath);
-
-                var builder = new ProjectContextBuilder()
-                    .WithProject(project)
-                    .WithTargetFramework(framework);
-
-                return builder.Build();
-            });
-        }
-
-        public DependencyInfo GetDependencyInfo(string projectPath, NuGetFramework framework, string configuration)
-        {
-            var projectContext = GetProjectContext(projectPath, framework);
-            if (projectContext == null)
-            {
-                return null;
-            }
-
-            var cacheKey = Tuple.Create(typeof(DependencyInfo), projectPath, framework, configuration);
-            return Cache.Get(cacheKey, ctx =>
-            {
-                Cache.TriggerDependency(projectPath, framework.Framework, configuration);
-                Cache.MonitorDependency(ctx, projectPath, framework.Framework);
-
-                //var resolver = new DependencyInfoResolver(projectContext, configuration);
-                return Resolve(projectContext, configuration);
-            }) as DependencyInfo;
-        }
-
-        private DependencyInfo Resolve(ProjectContext projectContext, string configuration)
+        public static DependencyInfo GetDependencyInfo(this ProjectContext projectContext, string configuration)
         {
             var diagnostics = projectContext.LibraryManager.GetAllDiagnostics();
             var libraries = projectContext.LibraryManager.GetLibraries();
@@ -83,7 +17,7 @@ namespace Microsoft.DotNet.ProjectModel.ProjectSystem
             var dependencies = new List<DependencyDescription>();
             var runtimeAssemblyReferences = new List<string>();
             var projectReferences = new List<ProjectReferenceInfo>();
-            var exportedSourceFiles = new List<string>();
+            var sourceFiles = new List<string>(projectContext.ProjectFile.Files.SourceFiles);
 
             var diagnosticSources = diagnostics.ToLookup(diagnostic => diagnostic.Source);
             ProjectDescription mainProject = null;
@@ -146,17 +80,17 @@ namespace Microsoft.DotNet.ProjectModel.ProjectSystem
             foreach (var export in exporter.GetAllExports())
             {
                 runtimeAssemblyReferences.AddRange(export.CompilationAssemblies.Select(asset => asset.ResolvedPath));
-                exportedSourceFiles.AddRange(export.SourceReferences);
+                sourceFiles.AddRange(export.SourceReferences);
             }
 
             return new DependencyInfo(diagnostics,
                                       dependencies,
                                       projectReferences,
                                       runtimeAssemblyReferences,
-                                      exportedSourceFiles);
+                                      sourceFiles);
         }
 
-        private DependencyDescription CreateDependencyDescription(
+        private static DependencyDescription CreateDependencyDescription(
             LibraryDescription library,
             ILookup<string, LibraryDescription> librariesLookup,
             IEnumerable<DiagnosticMessage> diagnostics)
@@ -164,19 +98,17 @@ namespace Microsoft.DotNet.ProjectModel.ProjectSystem
             return new DependencyDescription
             {
                 Name = library.Identity.Name,
-                // TODO: Correct? Different from DTH
-                DisplayName = library.Identity.Name,
                 Version = library.Identity.Version?.ToString(),
                 Type = library.Identity.Type.Value,
                 Resolved = library.Resolved,
                 Path = library.Path,
-                Dependencies = library.Dependencies.Select(dep=> CreateDependencyItem(dep, librariesLookup)).ToList(),
+                Dependencies = library.Dependencies.Select(dep => CreateDependencyItem(dep, librariesLookup)).ToList(),
                 Errors = diagnostics.Where(d => d.Severity == DiagnosticMessageSeverity.Error).ToList(),
                 Warnings = diagnostics.Where(d => d.Severity == DiagnosticMessageSeverity.Warning).ToList()
             };
         }
 
-        private DependencyItem CreateDependencyItem(LibraryRange dependency, ILookup<string, LibraryDescription> librariesLookup)
+        private static DependencyItem CreateDependencyItem(LibraryRange dependency, ILookup<string, LibraryDescription> librariesLookup)
         {
             var candidates = librariesLookup[dependency.Name];
 

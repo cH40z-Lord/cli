@@ -3,27 +3,48 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Runtime.Versioning;
 using Microsoft.Extensions.ProjectModel.Graph;
-using NuGet;
 using NuGet.Frameworks;
 
 namespace Microsoft.Extensions.ProjectModel.Resolution
 {
     public class ProjectDependencyProvider
     {
-        public ProjectDescription GetDescription(string name, string path, LockFileTargetLibrary targetLibrary)
+        public ProjectDescription GetDescription(string name,
+                                                 string path,
+                                                 LockFileTargetLibrary targetLibrary,
+                                                 Func<string, Project> projectCacheResolver)
         {
             Project project;
-
-            // Can't find a project file with the name so bail
-            if (!ProjectReader.TryGetProject(path, out project))
+            if (projectCacheResolver != null)
             {
-                return new ProjectDescription(name, path);
+                project = projectCacheResolver(Path.GetDirectoryName(path));
+                if (project != null)
+                {
+                    return GetDescription(targetLibrary.TargetFramework, project);
+                }
+                else
+                {
+                    return new ProjectDescription(name, path);
+                }
             }
+            else
+            {
+                // Can't find a project file with the name so bail
+                if (!ProjectReader.TryGetProject(path, out project))
+                {
+                    return new ProjectDescription(name, path);
+                }
 
-            return GetDescription(targetLibrary.TargetFramework, project);
+                return GetDescription(targetLibrary.TargetFramework, project);
+            }
+        }
+
+        public ProjectDescription GetDescription(string name, string path, LockFileTargetLibrary targetLibrary)
+        {
+            return GetDescription(name, path, targetLibrary, projectCacheResolver: null);
         }
 
         public ProjectDescription GetDescription(NuGetFramework targetFramework, Project project)

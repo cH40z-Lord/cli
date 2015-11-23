@@ -3,7 +3,7 @@
 
 using NuGet.Frameworks;
 
-namespace Microsoft.DotNet.ProjectModel.ProjectSystem
+namespace Microsoft.DotNet.ProjectModel.Workspace
 {
     public class ProjectReferenceInfo
     {

@@ -4,13 +4,11 @@
 using System.Collections.Generic;
 using Microsoft.Extensions.ProjectModel;
 
-namespace Microsoft.DotNet.ProjectModel.ProjectSystem
+namespace Microsoft.DotNet.ProjectModel.Workspace
 {
     public class DependencyDescription
     {
         public string Name { get; set; }
-
-        public string DisplayName { get; set; }
 
         public string Version { get; set; }
 
