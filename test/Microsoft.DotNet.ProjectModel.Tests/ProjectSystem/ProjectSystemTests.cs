@@ -45,13 +45,21 @@ namespace Microsoft.DotNet.ProjectModel.Workspace.Tests
 
             Assert.NotNull(testProject.GetCompilerOptions(framework, configuration));
 
-            var dependnecyInfo = workspaceContext.GetDependencyInfo(testProject, framework);
-            Assert.NotNull(dependnecyInfo);
-            Assert.NotEmpty(dependnecyInfo.Dependencies);
-            Assert.NotNull(dependnecyInfo.Diagnostics);
-            Assert.NotEmpty(dependnecyInfo.FileReferences);
-            Assert.NotEmpty(dependnecyInfo.Sources);
-            Assert.NotEmpty(dependnecyInfo.ProjectReferences);
+            var dependencies = workspaceContext.GetDependencies(testProject, framework);
+            Assert.NotEmpty(dependencies);
+
+            var diagnostics = workspaceContext.GetDiagnostics(testProject, framework);
+            Assert.NotNull(diagnostics);
+            Assert.Empty(diagnostics);
+
+            var fileReferences = workspaceContext.GetFileReferences(testProject, framework);
+            Assert.NotEmpty(fileReferences);
+
+            var sources = workspaceContext.GetSourceFiles(testProject, framework);
+            Assert.NotEmpty(sources);
+
+            var projectReferences = workspaceContext.GetProjectReferences(testProject, framework);
+            Assert.NotEmpty(projectReferences);
         }
     }
 }

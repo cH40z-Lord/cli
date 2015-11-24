@@ -105,6 +105,9 @@ namespace Microsoft.Extensions.ProjectModel
 
         public ProjectContext Build()
         {
+            ProjectResolver = ProjectResolver ?? ResolveProject;
+            LockFileResolver = LockFileResolver ?? (lockFilePath => LockFileReader.Read(lockFilePath));
+
             ProjectDirectory = Project?.ProjectDirectory ?? ProjectDirectory;
 
             if (GlobalSettings == null)
@@ -130,14 +133,7 @@ namespace Microsoft.Extensions.ProjectModel
 
             if (LockFile == null && File.Exists(projectLockJsonPath))
             {
-                if (LockFileResolver != null)
-                {
-                    LockFile = LockFileResolver(ProjectDirectory);
-                }
-                else
-                {
-                    LockFile = LockFileReader.Read(projectLockJsonPath);
-                }
+                LockFile = LockFileResolver(ProjectDirectory);
             }
 
             var validLockFile = true;
@@ -367,25 +363,10 @@ namespace Microsoft.Extensions.ProjectModel
         {
             if (Project == null)
             {
-                if (ProjectResolver != null)
+                Project = ProjectResolver(ProjectDirectory);
+                if (Project == null)
                 {
-                    Project = ProjectResolver(ProjectDirectory);
-                    if (Project == null)
-                    {
-                        throw new InvalidOperationException($"Unable to resolve project from {ProjectDirectory}");
-                    }
-                }
-                else
-                {
-                    Project project;
-                    if (ProjectReader.TryGetProject(ProjectDirectory, out project))
-                    {
-                        Project = project;
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"Unable to resolve project from {ProjectDirectory}");
-                    }
+                    throw new InvalidOperationException($"Unable to resolve project from {ProjectDirectory}");
                 }
             }
         }
@@ -412,6 +393,19 @@ namespace Microsoft.Extensions.ProjectModel
             }
 
             return null;
+        }
+
+        private static Project ResolveProject(string projectDirectory)
+        {
+            Project project;
+            if (ProjectReader.TryGetProject(projectDirectory, out project))
+            {
+                return project;
+            }
+            else
+            {
+                return null;
+            }
         }
 
         private struct LibraryKey

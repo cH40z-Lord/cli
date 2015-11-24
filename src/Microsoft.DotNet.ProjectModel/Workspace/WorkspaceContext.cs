@@ -28,10 +28,10 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
 
         private readonly HashSet<string> _projects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        private WorkspaceContext(List<string> projectCandidates, string configuration)
+        private WorkspaceContext(List<string> projectJsonPaths, string configuration)
         {
             Configuration = configuration;
-            Initialize(projectCandidates);
+            Initialize(projectJsonPaths);
         }
 
         public string Configuration { get; }
@@ -44,13 +44,13 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
         /// </summary>
         public static WorkspaceContext CreateFrom(string projectPath, string configuration)
         {
-            var projectCandiates = PathResolve(projectPath);
-            if (projectCandiates == null || !projectCandiates.Any())
+            var projectJsonPaths = PathResolve(projectPath);
+            if (projectJsonPaths == null || !projectJsonPaths.Any())
             {
                 return null;
             }
 
-            var context = new WorkspaceContext(projectCandiates, configuration);
+            var context = new WorkspaceContext(projectJsonPaths, configuration);
             return context;
         }
 
@@ -59,10 +59,10 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             return CreateFrom(projectPath, "Debug");
         }
 
-        private void Initialize(List<string> projectCandidates)
+        private void Initialize(List<string> projectJsonPaths)
         {
             _projects.Clear();
-            foreach (var projectDirectory in projectCandidates)
+            foreach (var projectDirectory in projectJsonPaths)
             {
                 var project = GetProject(projectDirectory);
 
@@ -75,8 +75,8 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
 
                 foreach (var framework in project.GetTargetFrameworks())
                 {
-                    var depInfo = GetDependencyInfo(project, framework.FrameworkName);
-                    foreach (var eachReference in depInfo.ProjectReferences)
+                    var projectReferences = GetProjectReferences(project, framework.FrameworkName);
+                    foreach (var eachReference in projectReferences)
                     {
                         var referencedProject = GetProject(eachReference.Path);
                         if (referencedProject == null)
@@ -116,12 +116,37 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
                 (key, oldEntry) => AddProjectContextEntry(key.Item1, key.Item2, oldEntry)).ProjectContext;
         }
 
-        public DependencyInfo GetDependencyInfo(Project project, NuGetFramework framework)
+        public IEnumerable<DependencyDescription> GetDependencies(Project project, NuGetFramework framework)
+        {
+            return GetProjectContextWithDependencies(project, framework).Dependencies;
+        }
+
+        public IEnumerable<string> GetFileReferences(Project project, NuGetFramework framework)
+        {
+            return GetProjectContextWithDependencies(project, framework).FileReferences;
+        }
+
+        public IEnumerable<string> GetSourceFiles(Project project, NuGetFramework framework)
+        {
+            return GetProjectContextWithDependencies(project, framework).SourceFiles;
+        }
+
+        public IEnumerable<ProjectReferenceInfo> GetProjectReferences(Project project, NuGetFramework framework)
+        {
+            return GetProjectContextWithDependencies(project, framework).ProjectReferences;
+        }
+
+        public IEnumerable<DiagnosticMessage> GetDiagnostics(Project project, NuGetFramework framework)
+        {
+            return GetProjectContextWithDependencies(project, framework).Diagnostics;
+        }
+
+        private ProjectContextEntry GetProjectContextWithDependencies(Project project, NuGetFramework framework)
         {
             return _projectContextsCache.AddOrUpdate(
                 Tuple.Create(project.ProjectDirectory, framework),
                 key => AddProjectContextEntryWithDependency(key.Item1, key.Item2, null),
-                (key, oldEntry) => AddProjectContextEntryWithDependency(key.Item1, key.Item2, oldEntry)).DependencyInfo;
+                (key, oldEntry) => AddProjectContextEntryWithDependency(key.Item1, key.Item2, oldEntry));
         }
 
         private FileModelEntry<LockFile> AddLockFileEntry(string projectDirectory, FileModelEntry<LockFile> currentEntry)
@@ -214,10 +239,9 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
                                                                          ProjectContextEntry currentEntry)
         {
             var entry = AddProjectContextEntry(projectDirectory, framework, currentEntry);
-
-            if (entry.ProjectContext != null && entry.DependencyInfo == null)
+            if (!entry.HasDependencyResolved)
             {
-                entry.DependencyInfo = entry.ProjectContext.GetDependencyInfo(Configuration);
+                entry.GetDependencyInfo(Configuration);
             }
 
             return entry;
@@ -259,59 +283,6 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
                 Model = null;
                 FilePath = null;
                 _lastWriteTime = DateTime.MinValue;
-            }
-        }
-
-        private class ProjectContextEntry
-        {
-            private ProjectContext _context;
-
-            public ProjectContext ProjectContext
-            {
-                get { return _context; }
-                set
-                {
-                    if (value == null)
-                    {
-                        LastLockFileWriteTime = DateTime.MinValue;
-                    }
-                    else
-                    {
-                        var lockFilePath = Path.Combine(value.ProjectFile.ProjectDirectory, LockFile.FileName);
-                        LastLockFileWriteTime = File.Exists(lockFilePath) ? File.GetLastWriteTime(lockFilePath) :
-                                                                            DateTime.MinValue;
-                    }
-
-                    DependencyInfo = null;
-                    _context = value;
-                }
-            }
-
-            public DependencyInfo DependencyInfo { get; set; }
-
-            public DateTime LastLockFileWriteTime { get; private set; }
-
-            public bool HasChanged
-            {
-                get
-                {
-                    if (ProjectContext == null)
-                    {
-                        return true;
-                    }
-
-                    var lockFilePath = Path.Combine(ProjectContext.ProjectFile.ProjectDirectory,
-                                                    LockFile.FileName);
-
-                    return LastLockFileWriteTime < File.GetLastWriteTime(lockFilePath);
-                }
-            }
-
-            public void Reset()
-            {
-                _context = null;
-                DependencyInfo = null;
-                LastLockFileWriteTime = DateTime.MinValue;
             }
         }
 
