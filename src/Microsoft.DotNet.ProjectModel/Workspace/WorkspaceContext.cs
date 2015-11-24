@@ -28,10 +28,10 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
 
         private readonly HashSet<string> _projects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        private WorkspaceContext(List<string> projectJsonPaths, string configuration)
+        private WorkspaceContext(List<string> projectPaths, string configuration)
         {
             Configuration = configuration;
-            Initialize(projectJsonPaths);
+            Initialize(projectPaths);
         }
 
         public string Configuration { get; }
@@ -44,13 +44,13 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
         /// </summary>
         public static WorkspaceContext CreateFrom(string projectPath, string configuration)
         {
-            var projectJsonPaths = PathResolve(projectPath);
-            if (projectJsonPaths == null || !projectJsonPaths.Any())
+            var projectPaths = PathResolve(projectPath);
+            if (projectPaths == null || !projectPaths.Any())
             {
                 return null;
             }
 
-            var context = new WorkspaceContext(projectJsonPaths, configuration);
+            var context = new WorkspaceContext(projectPaths, configuration);
             return context;
         }
 
@@ -59,10 +59,10 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             return CreateFrom(projectPath, "Debug");
         }
 
-        private void Initialize(List<string> projectJsonPaths)
+        private void Initialize(List<string> projectPaths)
         {
             _projects.Clear();
-            foreach (var projectDirectory in projectJsonPaths)
+            foreach (var projectDirectory in projectPaths)
             {
                 var project = GetProject(projectDirectory);
 
@@ -241,7 +241,7 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             var entry = AddProjectContextEntry(projectDirectory, framework, currentEntry);
             if (!entry.HasDependencyResolved)
             {
-                entry.GetDependencyInfo(Configuration);
+                entry.ResolveDependencies(Configuration);
             }
 
             return entry;
