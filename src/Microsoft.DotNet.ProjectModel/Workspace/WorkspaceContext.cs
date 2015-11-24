@@ -28,9 +28,9 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
 
         private readonly HashSet<string> _projects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        private WorkspaceContext(List<string> projectCandidates)
+        private WorkspaceContext(List<string> projectCandidates, string configuration)
         {
-            Configuration = "Debug";
+            Configuration = configuration;
             Initialize(projectCandidates);
         }
 
@@ -42,7 +42,7 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
         /// There must be either a global.json or project.json at under the given path. Otherwise
         /// null is returned.
         /// </summary>
-        public static WorkspaceContext CreateFrom(string projectPath)
+        public static WorkspaceContext CreateFrom(string projectPath, string configuration)
         {
             var projectCandiates = PathResolve(projectPath);
             if (projectCandiates == null || !projectCandiates.Any())
@@ -50,8 +50,13 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
                 return null;
             }
 
-            var context = new WorkspaceContext(projectCandiates);
+            var context = new WorkspaceContext(projectCandiates, configuration);
             return context;
+        }
+
+        public static WorkspaceContext CreateFrom(string projectPath)
+        {
+            return CreateFrom(projectPath, "Debug");
         }
 
         private void Initialize(List<string> projectCandidates)
