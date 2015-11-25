@@ -58,7 +58,7 @@ namespace Microsoft.DotNet.ProjectModel
         /// </summary>
         public static WorkspaceContext CreateFrom(string projectPath, string configuration)
         {
-            var projectPaths = PathResolve(projectPath);
+            var projectPaths = ResolveProjectPath(projectPath);
             if (projectPaths == null || !projectPaths.Any())
             {
                 return null;
@@ -361,7 +361,7 @@ namespace Microsoft.DotNet.ProjectModel
             return null;
         }
 
-        private static List<string> PathResolve(string projectPath)
+        private static List<string> ResolveProjectPath(string projectPath)
         {
             if (File.Exists(projectPath))
             {
