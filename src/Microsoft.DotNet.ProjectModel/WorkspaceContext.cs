@@ -10,7 +10,7 @@ using Microsoft.Extensions.ProjectModel;
 using Microsoft.Extensions.ProjectModel.Graph;
 using NuGet.Frameworks;
 
-namespace Microsoft.DotNet.ProjectModel.Workspace
+namespace Microsoft.DotNet.ProjectModel
 {
     public class WorkspaceContext
     {
