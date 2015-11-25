@@ -23,15 +23,23 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
                    = new ConcurrentDictionary<string, FileModelEntry<LockFile>>();
 
         // key: project directory, target framework
-        private readonly ConcurrentDictionary<Tuple<string, NuGetFramework>, ProjectContextEntry> _projectContextsCache
-                   = new ConcurrentDictionary<Tuple<string, NuGetFramework>, ProjectContextEntry>();
+        private readonly ConcurrentDictionary<string, ProjectContextEntry> _projectContextsCache
+                   = new ConcurrentDictionary<string, ProjectContextEntry>();
 
         private readonly HashSet<string> _projects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        private bool _dirty;
 
         private WorkspaceContext(List<string> projectPaths, string configuration)
         {
             Configuration = configuration;
-            Initialize(projectPaths);
+
+            foreach (var path in projectPaths)
+            {
+                AddProject(path);
+            }
+
+            Refresh();
         }
 
         public string Configuration { get; }
@@ -41,6 +49,12 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
         /// 
         /// There must be either a global.json or project.json at under the given path. Otherwise
         /// null is returned.
+        /// 
+        /// If the given path points to a global.json, all the projects found under the search paths
+        /// are added to the WorkspaceContext.
+        /// 
+        /// If the given path points to a project.json, all the projects it referenced as well as itself
+        /// are added to the WorkspaceContext.
         /// </summary>
         public static WorkspaceContext CreateFrom(string projectPath, string configuration)
         {
@@ -59,40 +73,74 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             return CreateFrom(projectPath, "Debug");
         }
 
-        private void Initialize(List<string> projectPaths)
+        public void AddProject(string path)
         {
+            var projectPath = NormalizeProjectPath(path);
+
+            if (projectPath != null)
+            {
+                _dirty = _projects.Add(path);
+            }
+        }
+
+        public void RemoveProject(string path)
+        {
+            _dirty = _projects.Remove(path);
+        }
+
+        public IReadOnlyList<string> GetAllProjects()
+        {
+            if (_dirty)
+            {
+                Refresh();
+            }
+
+            return _projects.ToList().AsReadOnly();
+        }
+
+        /// <summary>
+        /// Refresh the WorkspaceContext to update projects collection
+        /// </summary>
+        public void Refresh()
+        {
+            var basePaths = new List<string>(_projects);
             _projects.Clear();
-            foreach (var projectDirectory in projectPaths)
+
+            foreach (var projectDirectory in basePaths)
             {
                 var project = GetProject(projectDirectory);
-
                 if (project == null)
                 {
                     continue;
                 }
 
-                _projects.Add(project.ProjectFilePath);
+                _projects.Add(project.ProjectDirectory);
 
-                foreach (var framework in project.GetTargetFrameworks())
+                foreach (var pair in GetProjectContext(project.ProjectDirectory))
                 {
-                    var projectReferences = GetProjectReferences(project, framework.FrameworkName);
-                    foreach (var eachReference in projectReferences)
-                    {
-                        var referencedProject = GetProject(eachReference.Path);
-                        if (referencedProject == null)
-                        {
-                            continue;
-                        }
+                    var projectContext = pair.Value;
 
-                        _projects.Add(referencedProject.ProjectFilePath);
+                    foreach (var reference in GetProjectReferences(projectContext))
+                    {
+                        var referencedProject = GetProject(reference.Path);
+                        if (referencedProject != null)
+                        {
+                            _projects.Add(referencedProject.ProjectDirectory);
+                        }
                     }
                 }
             }
         }
 
-        public IEnumerable<string> Projects => _projects;
+        public IReadOnlyDictionary<NuGetFramework, ProjectContext> GetProjectContext(string projectPath)
+        {
+            return _projectContextsCache.AddOrUpdate(
+                projectPath,
+                key => AddProjectContextEntry(key, null),
+                (key, oldEntry) => AddProjectContextEntry(key, oldEntry)).ProjectContexts;
+        }
 
-        public Project GetProject(string projectDirectory)
+        private Project GetProject(string projectDirectory)
         {
             return _projectsCache.AddOrUpdate(
                 projectDirectory,
@@ -100,75 +148,12 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
                 (key, oldEntry) => AddProjectEntry(key, oldEntry)).Model;
         }
 
-        public LockFile GetLockFile(string projectDirectory)
+        private LockFile GetLockFile(string projectDirectory)
         {
             return _lockFileCache.AddOrUpdate(
                 projectDirectory,
                 key => AddLockFileEntry(key, null),
                 (key, oldEntry) => AddLockFileEntry(key, oldEntry)).Model;
-        }
-
-        public ProjectContext GetProjectContext(Project project, NuGetFramework framework)
-        {
-            return _projectContextsCache.AddOrUpdate(
-                Tuple.Create(project.ProjectDirectory, framework),
-                key => AddProjectContextEntry(key.Item1, key.Item2, null),
-                (key, oldEntry) => AddProjectContextEntry(key.Item1, key.Item2, oldEntry)).ProjectContext;
-        }
-
-        public IEnumerable<DependencyDescription> GetDependencies(Project project, NuGetFramework framework)
-        {
-            return GetProjectContextWithDependencies(project, framework).Dependencies;
-        }
-
-        public IEnumerable<string> GetFileReferences(Project project, NuGetFramework framework)
-        {
-            return GetProjectContextWithDependencies(project, framework).FileReferences;
-        }
-
-        public IEnumerable<string> GetSourceFiles(Project project, NuGetFramework framework)
-        {
-            return GetProjectContextWithDependencies(project, framework).SourceFiles;
-        }
-
-        public IEnumerable<ProjectReferenceInfo> GetProjectReferences(Project project, NuGetFramework framework)
-        {
-            return GetProjectContextWithDependencies(project, framework).ProjectReferences;
-        }
-
-        public IEnumerable<DiagnosticMessage> GetDiagnostics(Project project, NuGetFramework framework)
-        {
-            return GetProjectContextWithDependencies(project, framework).Diagnostics;
-        }
-
-        private ProjectContextEntry GetProjectContextWithDependencies(Project project, NuGetFramework framework)
-        {
-            return _projectContextsCache.AddOrUpdate(
-                Tuple.Create(project.ProjectDirectory, framework),
-                key => AddProjectContextEntryWithDependency(key.Item1, key.Item2, null),
-                (key, oldEntry) => AddProjectContextEntryWithDependency(key.Item1, key.Item2, oldEntry));
-        }
-
-        private FileModelEntry<LockFile> AddLockFileEntry(string projectDirectory, FileModelEntry<LockFile> currentEntry)
-        {
-            if (currentEntry == null)
-            {
-                currentEntry = new FileModelEntry<LockFile>();
-            }
-            else if (!File.Exists(Path.Combine(projectDirectory, LockFile.FileName)))
-            {
-                currentEntry.Reset();
-                return currentEntry;
-            }
-
-            if (currentEntry.IsInvalid)
-            {
-                currentEntry.FilePath = Path.Combine(projectDirectory, LockFile.FileName);
-                currentEntry.Model = LockFileReader.Read(currentEntry.FilePath);
-                currentEntry.UpdateLastWriteTime();
-            }
-
-            return currentEntry;
         }
 
         private FileModelEntry<Project> AddProjectEntry(string projectDirectory, FileModelEntry<Project> currentEntry)
@@ -202,8 +187,29 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             return currentEntry;
         }
 
+        private FileModelEntry<LockFile> AddLockFileEntry(string projectDirectory, FileModelEntry<LockFile> currentEntry)
+        {
+            if (currentEntry == null)
+            {
+                currentEntry = new FileModelEntry<LockFile>();
+            }
+            else if (!File.Exists(Path.Combine(projectDirectory, LockFile.FileName)))
+            {
+                currentEntry.Reset();
+                return currentEntry;
+            }
+
+            if (currentEntry.IsInvalid)
+            {
+                currentEntry.FilePath = Path.Combine(projectDirectory, LockFile.FileName);
+                currentEntry.Model = LockFileReader.Read(currentEntry.FilePath);
+                currentEntry.UpdateLastWriteTime();
+            }
+
+            return currentEntry;
+        }
+
         private ProjectContextEntry AddProjectContextEntry(string projectDirectory,
-                                                           NuGetFramework framework,
                                                            ProjectContextEntry currentEntry)
         {
             if (currentEntry == null)
@@ -222,29 +228,31 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
 
             if (currentEntry.HasChanged)
             {
-                var builder = new ProjectContextBuilder()
-                    .WithProjectResolver(path => GetProject(path))
-                    .WithLockFileResolver(path => GetLockFile(path))
-                    .WithProject(project)
-                    .WithTargetFramework(framework);
+                currentEntry.Reset();
 
-                currentEntry.ProjectContext = builder.Build();
+                foreach (var framework in project.GetTargetFrameworks())
+                {
+                    var builder = new ProjectContextBuilder()
+                        .WithProjectResolver(path => GetProject(path))
+                        .WithLockFileResolver(path => GetLockFile(path))
+                        .WithProject(project)
+                        .WithTargetFramework(framework.FrameworkName);
+
+                    currentEntry.ProjectContexts[framework.FrameworkName] = builder.Build();
+                }
+
+                currentEntry.ProjectFilePath = project.ProjectFilePath;
+                currentEntry.LastProjectFileWriteTime = File.GetLastWriteTime(currentEntry.ProjectFilePath);
+
+                var lockFilePath = Path.Combine(project.ProjectDirectory, LockFile.FileName);
+                if (File.Exists(lockFilePath))
+                {
+                    currentEntry.LockFilePath = lockFilePath;
+                    currentEntry.LastLockFileWriteTime = File.GetLastWriteTime(lockFilePath);
+                }
             }
 
             return currentEntry;
-        }
-
-        private ProjectContextEntry AddProjectContextEntryWithDependency(string projectDirectory,
-                                                                         NuGetFramework framework,
-                                                                         ProjectContextEntry currentEntry)
-        {
-            var entry = AddProjectContextEntry(projectDirectory, framework, currentEntry);
-            if (!entry.HasDependencyResolved)
-            {
-                entry.ResolveDependencies(Configuration);
-            }
-
-            return entry;
         }
 
         private class FileModelEntry<TModel> where TModel : class
@@ -286,6 +294,67 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             }
         }
 
+        private class ProjectContextEntry
+        {
+            public Dictionary<NuGetFramework, ProjectContext> ProjectContexts { get; } = new Dictionary<NuGetFramework, ProjectContext>();
+
+            public string LockFilePath { get; set; }
+
+            public string ProjectFilePath { get; set; }
+
+            public DateTime LastProjectFileWriteTime { get; set; }
+
+            public DateTime LastLockFileWriteTime { get; set; }
+
+            public bool HasChanged
+            {
+                get
+                {
+                    if (ProjectContexts == null)
+                    {
+                        return true;
+                    }
+
+                    if (LastProjectFileWriteTime < File.GetLastWriteTime(ProjectFilePath))
+                    {
+                        return true;
+                    }
+
+                    if (LastLockFileWriteTime < File.GetLastWriteTime(LockFilePath))
+                    {
+                        return true;
+                    }
+
+                    return false;
+                }
+            }
+
+            public void Reset()
+            {
+                ProjectContexts.Clear();
+                ProjectFilePath = null;
+                LockFilePath = null;
+                LastLockFileWriteTime = DateTime.MinValue;
+                LastProjectFileWriteTime = DateTime.MinValue;
+            }
+        }
+
+        private static string NormalizeProjectPath(string path)
+        {
+            if (File.Exists(path) &&
+                string.Equals(Path.GetFileName(path), Project.FileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return Path.GetFullPath(Path.GetDirectoryName(path));
+            }
+            else if (Directory.Exists(path) &&
+                     File.Exists(Path.Combine(path, Project.FileName)))
+            {
+                return Path.GetFullPath(path);
+            }
+
+            return null;
+        }
+
         private static List<string> PathResolve(string projectPath)
         {
             if (File.Exists(projectPath))
@@ -323,6 +392,30 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             }
 
             return null;
+        }
+
+        private static IEnumerable<ProjectDescription> GetProjectReferences(ProjectContext context)
+        {
+            var projectDescriptions = context.LibraryManager
+                                             .GetLibraries()
+                                             .Where(lib => lib.Identity.Type == LibraryType.Project)
+                                             .OfType<ProjectDescription>();
+
+            foreach (var description in projectDescriptions)
+            {
+                if (description.Identity.Name == context.ProjectFile.Name)
+                {
+                    continue;
+                }
+
+                // if this is an assembly reference then don't threat it as project reference
+                if (!string.IsNullOrEmpty(description.TargetFrameworkInfo?.AssemblyPath))
+                {
+                    continue;
+                }
+
+                yield return description;
+            }
         }
     }
 }
