@@ -28,7 +28,7 @@ namespace Microsoft.DotNet.ProjectModel
 
         private readonly HashSet<string> _projects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        private bool _dirty;
+        private bool _needRefresh;
 
         private WorkspaceContext(List<string> projectPaths, string configuration)
         {
@@ -79,22 +79,18 @@ namespace Microsoft.DotNet.ProjectModel
 
             if (projectPath != null)
             {
-                _dirty = _projects.Add(path);
+                _needRefresh = _projects.Add(path);
             }
         }
 
         public void RemoveProject(string path)
         {
-            _dirty = _projects.Remove(path);
+            _needRefresh = _projects.Remove(path);
         }
 
         public IReadOnlyList<string> GetAllProjects()
         {
-            if (_dirty)
-            {
-                Refresh();
-            }
-
+            Refresh();
             return _projects.ToList().AsReadOnly();
         }
 
@@ -103,6 +99,11 @@ namespace Microsoft.DotNet.ProjectModel
         /// </summary>
         public void Refresh()
         {
+            if (!_needRefresh)
+            {
+                return;
+            }
+
             var basePaths = new List<string>(_projects);
             _projects.Clear();
 
@@ -128,6 +129,8 @@ namespace Microsoft.DotNet.ProjectModel
                     }
                 }
             }
+
+            _needRefresh = false;
         }
 
         public IReadOnlyList<ProjectContext> GetProjectContexts(string projectPath)

@@ -12,33 +12,31 @@ namespace Microsoft.Extensions.ProjectModel.Resolution
 {
     public class ProjectDependencyProvider
     {
+        private Func<string, Project> _resolveProject;
+
+        public ProjectDependencyProvider()
+        {
+            _resolveProject = ResolveProject;
+        }
+
+        public ProjectDependencyProvider(Func<string, Project> projectCacheResolver)
+        {
+            _resolveProject = projectCacheResolver;
+        }
+
         public ProjectDescription GetDescription(string name,
                                                  string path,
                                                  LockFileTargetLibrary targetLibrary,
                                                  Func<string, Project> projectCacheResolver)
         {
-            Project project;
-            if (projectCacheResolver != null)
+            var project = _resolveProject(Path.GetDirectoryName(path));
+            if (project != null)
             {
-                project = projectCacheResolver(Path.GetDirectoryName(path));
-                if (project != null)
-                {
-                    return GetDescription(targetLibrary.TargetFramework, project);
-                }
-                else
-                {
-                    return new ProjectDescription(name, path);
-                }
+                return GetDescription(targetLibrary.TargetFramework, project);
             }
             else
             {
-                // Can't find a project file with the name so bail
-                if (!ProjectReader.TryGetProject(path, out project))
-                {
-                    return new ProjectDescription(name, path);
-                }
-
-                return GetDescription(targetLibrary.TargetFramework, project);
+                return new ProjectDescription(name, path);
             }
         }
 
@@ -82,6 +80,19 @@ namespace Microsoft.Extensions.ProjectModel.Resolution
                 dependencies,
                 targetFrameworkInfo,
                 !unresolved);
+        }
+
+        private Project ResolveProject(string path)
+        {
+            Project project;
+            if (ProjectReader.TryGetProject(path, out project))
+            {
+                return project;
+            }
+            else
+            {
+                return null;
+            }
         }
     }
 }
