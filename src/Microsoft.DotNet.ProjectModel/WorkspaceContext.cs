@@ -116,10 +116,8 @@ namespace Microsoft.DotNet.ProjectModel
 
                 _projects.Add(project.ProjectDirectory);
 
-                foreach (var pair in GetProjectContext(project.ProjectDirectory))
+                foreach (var projectContext in GetProjectContexts(project.ProjectDirectory))
                 {
-                    var projectContext = pair.Value;
-
                     foreach (var reference in GetProjectReferences(projectContext))
                     {
                         var referencedProject = GetProject(reference.Path);
@@ -132,7 +130,7 @@ namespace Microsoft.DotNet.ProjectModel
             }
         }
 
-        public IReadOnlyDictionary<NuGetFramework, ProjectContext> GetProjectContext(string projectPath)
+        public IReadOnlyList<ProjectContext> GetProjectContexts(string projectPath)
         {
             return _projectContextsCache.AddOrUpdate(
                 projectPath,
@@ -238,7 +236,7 @@ namespace Microsoft.DotNet.ProjectModel
                         .WithProject(project)
                         .WithTargetFramework(framework.FrameworkName);
 
-                    currentEntry.ProjectContexts[framework.FrameworkName] = builder.Build();
+                    currentEntry.ProjectContexts.Add(builder.Build());
                 }
 
                 currentEntry.ProjectFilePath = project.ProjectFilePath;
@@ -296,7 +294,7 @@ namespace Microsoft.DotNet.ProjectModel
 
         private class ProjectContextEntry
         {
-            public Dictionary<NuGetFramework, ProjectContext> ProjectContexts { get; } = new Dictionary<NuGetFramework, ProjectContext>();
+            public List<ProjectContext> ProjectContexts { get; } = new List<ProjectContext>();
 
             public string LockFilePath { get; set; }
 
