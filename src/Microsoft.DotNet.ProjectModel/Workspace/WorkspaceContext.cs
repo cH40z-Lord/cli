@@ -310,12 +310,17 @@ namespace Microsoft.DotNet.ProjectModel.Workspace
             {
                 get
                 {
-                    if (ProjectContexts == null)
+                    if (ProjectFilePath == null || !File.Exists(ProjectFilePath))
                     {
                         return true;
                     }
 
                     if (LastProjectFileWriteTime < File.GetLastWriteTime(ProjectFilePath))
+                    {
+                        return true;
+                    }
+
+                    if (LockFilePath == null || !File.Exists(LockFilePath))
                     {
                         return true;
                     }
